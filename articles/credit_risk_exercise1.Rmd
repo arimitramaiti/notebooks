@@ -1,0 +1,538 @@
+---
+title: "ePGD-ABA (2020-21) | Finance Elective | Professor Vineet Virmani | Credit Risk Assignment"
+author: "Name:Arimitra Maiti, Email:aba20arimitram@iima.ac.in, Student ID : 6820017"
+date: "5/5/2021"
+output:
+  html_document:
+#    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## Logit and Probit: Estimating probability of default
+
+The data used in this assignment has been provided explicitly by the faculty and research associate team which constitutes Professor **Vineet** **Virmani**, Ms. **Venus** **Rais** and Mr. **Sathish** **LM**.
+
+```{r echo=FALSE, include = FALSE}
+if(!require(devtools)) install.packages("devtools")
+devtools::install_github("kassambara/ggcorrplot")
+
+if(!require(devtools)) install.packages("readr", "ggplot2", "ggpubr", "ggcorrplot", "caret", "RANN", "randomForest", "e1071",
+                                        "doSNOW", "xgboost", "ipred", "pROC", "InformationValue")
+
+if(!require(devtools)) install.packages("rmarkdown", "tinytex", "kableExtra", "summarytools", "gridExtra",
+                                        "sjPlot", "sjmisc", "sjlabelled")
+
+library('readr')
+library("ggplot2")
+library("ggpubr")
+library('ggcorrplot')
+library("caret")
+library("RANN")
+library("randomForest")
+library("e1071")
+library("doSNOW")
+library("xgboost")
+library("ipred")
+library("pROC")
+library("InformationValue")
+library("rmarkdown")
+library("tinytex")
+library("kableExtra")
+library("summarytools")
+library('gridExtra')
+library("sjPlot")
+library("sjmisc")
+library("sjlabelled")
+
+```
+
+#### The bad loans dataset looks like this:
+```{r echo=FALSE}
+##Import Data
+data <- read.csv("https://raw.githubusercontent.com/arimitramaiti/datasets/master/articles/bad_loans_data.csv", header = TRUE, sep = ",")
+
+##Check first few rows
+h <- data[1:5, ]
+kbl(h) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12)
+```
+
+#### When we summarize the dataset it looks as follows:
+```{r echo=FALSE}
+##Summarize Data
+print(dfSummary(data, graph.magnif = 0.75), method = 'render')
+```
+We observe although there are no missing values in the target variable **Default**, yet there are missing values in quite a few explanatory attributes. We aim to treat them before applying the logit/probit functions, however prior to that we may need to check the distribution of the numeric attributes with respect to our binary target column.
+
+##### The class imbalance ratio is `r round((table(data$Default)[[2]]/nrow(data))*100,2)` percent, which implies there is approximately 20% default loan instances and the remaining 80% are non default cases.
+
+Out of 13 attributes present in the data, we have 10 numeric attributes.
+
+#### The distribution of the 10 numeric attributes with respect to Target class is as follows:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 200}
+##Plot numeric attributes
+#theme_set(theme_pubr())
+
+data$target = ifelse(data$Default==1, "Default", "Non-Default")
+
+##Create plot objects
+p1 <- ggplot(data, aes(x = Amount, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  labs(title = "Distribution of Amount by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p2 <- ggplot(data, aes(x = target, y = Amount)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Amount by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p3 <- ggplot(data, aes(x = Loan_due, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Loan_due by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p4 <- ggplot(data, aes(x = target, y = Loan_due)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Loan_due by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p5 <- ggplot(data, aes(x = Home_value, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Home_value by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p6 <- ggplot(data, aes(x = target, y = Home_value)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Home_value by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p7 <- ggplot(data, aes(x = Years_Job, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Years_Job by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p8 <- ggplot(data, aes(x = target, y = Years_Job)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Years_Job by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p9 <- ggplot(data, aes(x = Bad_reports, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Bad_reports by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p10 <- ggplot(data, aes(x = target, y = Bad_reports)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Bad_reports by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+
+p11 <- ggplot(data, aes(x = Bad_loans, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Bad_loans by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p12 <- ggplot(data, aes(x = target, y = Bad_loans)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Bad_loans by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p13 <- ggplot(data, aes(x = Loan_age, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Loan_age by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p14 <- ggplot(data, aes(x = target, y = Loan_age)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Loan_age by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p15 <- ggplot(data, aes(x = Inquiries, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Inquiries by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p16 <- ggplot(data, aes(x = target, y = Inquiries)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Inquiries by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p17 <- ggplot(data, aes(x = Existing_loans, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Existing_loans by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p18 <- ggplot(data, aes(x = target, y = Existing_loans)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Existing_loans by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+
+p19 <- ggplot(data, aes(x = Debt_income, fill = target)) + geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Distribution of Debt_income by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+p20 <- ggplot(data, aes(x = target, y = Debt_income)) + geom_boxplot() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "Boxplot of Debt_income by Target Labels") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10))
+
+
+grid.arrange(p1, p2, nrow = 2)
+grid.arrange(p3, p4, nrow = 2)
+grid.arrange(p5, p6, nrow = 2)
+grid.arrange(p7, p8, nrow = 2)
+grid.arrange(p9, p10, nrow = 2)
+grid.arrange(p11, p12, nrow = 2)
+grid.arrange(p13, p14, nrow = 2)
+grid.arrange(p15, p16, nrow = 2)
+grid.arrange(p17, p18, nrow = 2)
+grid.arrange(p19, p20, nrow = 2)
+
+rm(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,p15,p16,p17,p18,p19,p20)
+
+data <- data[, c(1:ncol(data)-1)]
+set.seed(123)
+trainIndex <- createDataPartition(data$Default, p = .7, 
+                                  list = FALSE, 
+                                  times = 1)
+
+df_Train <- data[ trainIndex,]
+df_Test  <- data[-trainIndex,]
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+##### We now split the data into train and test sets with stratified partitions of the target variable where the train set has `r round((nrow(df_Train)/nrow(data))*100,2)` percent rows and the test set has `r round((nrow(df_Test)/nrow(data))*100,2)` percent rows.
+
+##### The class imbalance ratio in train set is `r round((table(df_Train$Default)[[2]]/nrow(df_Train))*100,2)` percent, and for test set is `r round((table(df_Test$Default)[[2]]/nrow(df_Test))*100,2)` percent.
+
+We wanted to check the **correlation** between all explanatory attributes which are numeric in nature, however due to presence of missing observations we first decided to impute all missing instances with zero; just to get an overview of the business. In our subsequent steps we would implement relatively more robust imputations before model training.
+
+#### The correlation plot is as follows:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+##Compute correlation matrix and plot
+dropcol <- c("Default", "Reason", "Job")
+corr_data <- df_Train[, !(names(df_Train) %in% dropcol)]
+corr_data[is.na(corr_data)] <- 0
+
+corr <- round(cor(corr_data), 1)
+
+ggcorrplot(corr, hc.order = TRUE, type = "lower", method = "circle", lab = TRUE, outline.col = "white", colors = c("#6D9EC1", "white", "#E46726")) + 
+  labs(title = "Correlation Matrix of Independent vars from Training set", subtitle = "Replacing missing observations with zero") +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10), axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10),
+        plot.subtitle = element_text(size = 10))
+
+```
+
+#### The data transformation steps before model training are as follows:
++ We have used **dummyvars()** function from **caret** package to convert nominal attributes like Reason and Job into full set dummy variables. It is similar to One-Hot-Encoding
++ We have used **bagImpute** and **range** methods from the **preProcess()** function of caret package to impute missing observations and scale the data ranging between 0 and 1
++ We have created the transformer first, **trained** the transformer on the training set and then applied the trained transformer on the test set
++ The intent of performing the above transformations is to ensure **applicability** of other algorithms apart from logit/probit
++ Although it is not customary to perform these steps prior logit/probit, yet to facilitate the **performance** of **test** data on a common refined set of features are not negligible
++ However, an obvious disadvantage to this transformation is to restrict the **interpretation** of odds ratios based on the model coefficients in its absolute sense
+
+### Logit Model
+#### The summary of three iterations using logit model is as follows:
+```{r echo=FALSE}
+preProcess_missingdata_model <- preProcess(df_Train, method='bagImpute')
+#preProcess_missingdata_model
+trainData <- predict(preProcess_missingdata_model, newdata = df_Train)
+#anyNA(trainData)
+testData <- predict(preProcess_missingdata_model, newdata = df_Test)
+#anyNA(testData)
+
+dummies_model <- dummyVars(Default ~ ., data=trainData)
+trainData_mat <- predict(dummies_model, newdata = trainData)
+trainData <- data.frame(trainData_mat)
+
+testData_mat <- predict(dummies_model, newdata = testData)
+testData <- data.frame(testData_mat)
+
+
+preProcess_range_model <- preProcess(trainData, method='range')
+trainData <- predict(preProcess_range_model, newdata = trainData)
+
+testData <- predict(preProcess_range_model, newdata = testData)
+
+ydata_train <- data.frame(df_Train$Default, row.names = row.names(df_Train))
+ydata_train$Key = row.names(ydata_train)
+
+trainData$Key <- row.names(trainData)
+trainData <- merge(ydata_train, trainData, by = "Key", all.x=TRUE)
+trainData$Key <- as.numeric(trainData$Key)
+trainData <- trainData[with(trainData, order(Key)), ]
+
+dropcol <- c("Key")
+trainData <- trainData[, !(names(trainData) %in% dropcol)]
+
+names(trainData)[names(trainData) == "df_Train.Default"] <- "Default"
+
+ydata_test <- data.frame(df_Test$Default, row.names = row.names(df_Test))
+ydata_test$Key = row.names(ydata_test)
+
+testData$Key <- row.names(testData)
+testData <- merge(ydata_test, testData, by = "Key", all.x=TRUE)
+testData$Key <- as.numeric(testData$Key)
+testData <- testData[with(testData, order(Key)), ]
+
+dropcol <- c("Key")
+testData <- testData[, !(names(testData) %in% dropcol)]
+
+names(testData)[names(testData) == "df_Test.Default"] <- "Default"
+
+set.seed(100)
+options(warn=-1)
+
+trainData <- subset(trainData, select = -c(Reason,Job))
+testData <- subset(testData, select = -c(Reason,Job))
+
+m1 <- glm(formula = Default ~ .,
+          data = trainData, family = binomial(link = "logit"))
+
+trainData1 <- subset(trainData, select = -c(ReasonDebtCon,ReasonHomeImp, Years_Job))
+
+m2 <- glm(formula = Default ~ .,
+          data = trainData1, family = binomial(link = "logit"))
+
+trainData2 <- subset(trainData, select = -c(ReasonDebtCon,ReasonHomeImp, Years_Job, JobOffice))
+
+m3 <- glm(formula = Default ~ .,
+          data = trainData2, family = binomial(link = "logit"))
+
+tab_model(
+  m1, m2, m3, 
+  pred.labels = c("Intercept", "Amount (Borrwed)", "Loan due", "Home value",
+                  "Reason: DebtCon", "Reason: HomeImp", "Job: Mgr", "Job: Office", "Job: Other", "Job: ProfExe ", "Job: Sales", "Job: Self",
+                  "Years in Job", "Bad reports", "Bad loans", "Loan age", "Inquiries", "Existing loans", "Debt income"),
+  dv.labels = c("Iteration-1", "Iteration-2", "Iteration-3"),
+  string.pred = "Coeffcient",
+  string.ci = "Conf. Int (95%)",
+  string.p = "P-Value"
+)
+
+```
+
+#### The iteration sequence is as follows:
++ The **null** **deviance** for the model is `r round(m3$null.deviance, 2)`
++ Iteration-1 : Model AIC is `r round(m1$aic, 2)` and Model Deviance is `r round(m1$deviance, 2)`
+    + Full Model consisting of all explanatory attributes
++ Iteration-2 : Model AIC is `r round(m2$aic, 2)` and Model Deviance is `r round(m2$deviance, 2)`
+    + **Removed** Reason: DebtCon, Reason: HomeImp and Years in Job
++ Iteration-3 : Model AIC is `r round(m3$aic, 2)` and Model Deviance is `r round(m3$deviance, 2)`
+    + **Removed** Job: Office
+
+**Odds** **ratio** is evaluated by taking the **exponential** of beta coefficients coming from the logit model.Lets assume that the odds ratio for Loan age is **1.08**. This implies that for **one* **unit** **increase** in the **age** of **loan**, the **odds** of being a **loan** **defaulter** **increases** **multiplicative** by **1.08**. In other words, with one unit increase in age of loan, the **odds** of **default** rises by **0.08** **approximately**. Unfortunately we wont be able to apply the absolute values of odds ratio shown in the above table because we have made transformations in the explanatory variables. However the relative magnitude of the odds ratio suggest that **Debt income**, **Bad loans**, **Bad reports** and **Home value** are the most important predictors in the logit model having higher odds ratio of being a loan defaulter.
+
+The **third iteration** of the logit model shows almost all explanatory attributes are significant at 95% confidence interval, except the ones which are removed.
+
+The 95% **confidence interval** of the odds ratio is also shown where the lower bound is perceived as *at* *least* **and** the upper bound is perceived as *at* *most*.
+
+#### The confusion matrix for third and final iteration is as follows:
+```{r echo=FALSE}
+testData2 <- subset(testData, select = -c(ReasonDebtCon,ReasonHomeImp, Years_Job, JobOffice))
+
+y_pred <- predict(m3, testData2, type = "response")
+testData2$y_pred <- y_pred
+testData2$Default_pred <- ifelse(testData2$y_pred > 0.50, 1, 0)
+
+m <- as.data.frame.matrix(confusionMatrix(actuals=testData2$Default, predictedScores=testData2$y_pred))
+
+kable(m, longtable =T,booktabs =T,caption ="Confusion Matrix") %>% add_header_above(c(" ","p=50%"=2))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12)
+
+```
+
+#### The area under ROC is as follows:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "50%", dpi = 100}
+g1 <- roc(testData2$Default ~ testData2$y_pred, plot = TRUE, print.auc = TRUE, ci=TRUE)
+
+g2 <- plotROC(actuals=testData2$Default,  predictedScores=testData2$Default_pred, returnSensitivityMat = FALSE)
+
+#ggarrange(g1, g2, ncol = 2, nrow = 1)
+```
+
+##### The misclassification rate `r round((misClassError(actuals=testData2$Default, predictedScores=testData2$y_pred, threshold=0.5))*100,2)` percent and the precision is `r round((precision(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent. However, the ability of the model to correctly identify the defaulters (i.e. Sensitivity) is `r round((sensitivity(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent and the ability of the model to correctly identify the non defaulters (i.e. Specificity) is `r round((specificity(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent. The somersD value for the logit model is `r round((somersD(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent; larger the Somers D value, better is the model’s predictive ability. The kolmogorov-smirnov statistic for the model is `r round((ks_stat(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent which is widely used in credit scoring to determine the efficacy of binary classification models.
+
+##### The lift curve for the **Logit** model is as follows:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+ks_plot(actuals=testData2$Default, predictedScores=testData2$y_pred)
+```
+
+##### The optimal cutoff value for the model is  `r optimalCutoff(actuals=testData2$Default, predictedScores=testData2$y_pred, optimiseFor = "Both")`.
+```{r echo=FALSE}
+cutoff_table <- data.frame(optimalCutoff(actuals=testData2$Default, predictedScores=testData2$y_pred, optimiseFor = "Both", returnDiagnostics = TRUE)$sensitivityTable)
+kbl(cutoff_table) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T)
+
+r1 <- misClassError(actuals=testData2$Default, predictedScores=testData2$y_pred, threshold=0.5)
+r2 <- precision(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r3 <- sensitivity(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r4 <- specificity(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r5 <- somersD(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r6 <- ks_stat(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r7 <- youdensIndex(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r8 <- Concordance(actuals=testData2$Default, predictedScores=testData2$y_pred)[1][[1]]
+r9 <- Concordance(actuals=testData2$Default, predictedScores=testData2$y_pred)[2][[1]]
+r10 <- npv(actuals=testData2$Default, predictedScores=testData2$y_pred)
+
+metric_list <- rbind(r1,r2,r3,r4,r5,r6,r7,r8,r9,r10)
+
+metric_list_df <- data.frame(metric_list)
+
+row.names(metric_list_df) <- c("MisClassification-Error", "Precision", "Sensitivity", "Specificity", "SomersD", "KS-Stat", "Youdens-Index",
+                               "Concordance", "Discordance", "NPV")
+
+names(metric_list_df) <- c("Logit-Model")
+metric_list_df$Measures <- row.names(metric_list_df)
+row.names(metric_list_df) <- NULL
+metric_list_df$`Logit-Model` <- round(metric_list_df$`Logit-Model`,3)
+rm(r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,metric_list)
+
+```
+
+### Probit Model
+#### The summary of three iterations using probit model is as follows:
+```{r echo=FALSE}
+set.seed(100)
+options(warn=-1)
+
+mm1 <- glm(formula = Default ~ .,
+          data = trainData, family = binomial(link = "probit"))
+
+trainData1 <- subset(trainData, select = -c(ReasonDebtCon,ReasonHomeImp, Years_Job))
+
+mm2 <- glm(formula = Default ~ .,
+          data = trainData1, family = binomial(link = "probit"))
+
+trainData2 <- subset(trainData, select = -c(ReasonDebtCon,ReasonHomeImp, Years_Job, JobOffice))
+
+mm3 <- glm(formula = Default ~ .,
+          data = trainData2, family = binomial(link = "probit"))
+
+tab_model(
+  mm1, mm2, mm3, 
+  pred.labels = c("Intercept", "Amount (Borrwed)", "Loan due", "Home value",
+                  "Reason: DebtCon", "Reason: HomeImp", "Job: Mgr", "Job: Office", "Job: Other", "Job: ProfExe ", "Job: Sales", "Job: Self",
+                  "Years in Job", "Bad reports", "Bad loans", "Loan age", "Inquiries", "Existing loans", "Debt income"),
+  dv.labels = c("Iteration-1", "Iteration-2", "Iteration-3"),
+  string.pred = "Coeffcient",
+  string.ci = "Conf. Int (95%)",
+  string.p = "P-Value"
+)
+
+```
+
+#### The iteration sequence is as follows:
++ The **null** **deviance** for the model is `r round(mm3$null.deviance, 2)`
++ Iteration-1 : Model AIC is `r round(mm1$aic, 2)` and Model Deviance is `r round(mm1$deviance, 2)`
+    + Full Model consisting of all explanatory attributes
++ Iteration-2 : Model AIC is `r round(mm2$aic, 2)` and Model Deviance is `r round(mm2$deviance, 2)`
+    + **Removed** Reason: DebtCon, Reason: HomeImp and Years in Job
++ Iteration-3 : Model AIC is `r round(mm3$aic, 2)` and Model Deviance is `r round(mm3$deviance, 2)`
+    + **Removed** Job: Office
+
+In the probit model, the inverse standard normal distribution of the probability is modeled as a linear combination of the explanatory attributes. Lets us assume the Risk ratio of Bad Loans is 20. For a one unit increase in Bad Loans, the **z-score** increases/decreases by the value of risk ratio depending upon whether the sign of the coefficient is positive/negative respectively. While this structure holds true for numeric attributes, we may need to interpret the dummy variables differently. Let us assume the risk ratio for Job: Mgr is 2. Having Job level as Manager, **versus a missing Job level** in the data (the reference group), increases the z-score by 2. Unfortunately we wont be able to apply the absolute values of odds ratio shown in the above table because we have made transformations in the explanatory variables. The relative magnitude of the explanatory attributes in probit model suggest similar to logit model that **Debt income**, **Bad loans**, **Bad reports** and **Home value** are the most important predictors in the logit model having higher odds ratio of being a loan defaulter.
+
+#### The confusion matrix for third and final iteration is as follows:
+```{r echo=FALSE}
+##Remove predict data sets fro probit model first
+rm(testData2, y_pred, m)
+##Recreate predict data sets
+testData2 <- subset(testData, select = -c(ReasonDebtCon,ReasonHomeImp, Years_Job, JobOffice))
+
+y_pred <- predict(mm3, testData2, type = "response")
+testData2$y_pred <- y_pred
+testData2$Default_pred <- ifelse(testData2$y_pred > 0.50, 1, 0)
+
+m <- as.data.frame.matrix(confusionMatrix(actuals=testData2$Default, predictedScores=testData2$y_pred))
+
+kable(m, longtable =T,booktabs =T,caption ="Confusion Matrix") %>% add_header_above(c(" ","p=50%"=2))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12)
+
+```
+
+#### The area under ROC is as follows:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "50%", dpi = 100}
+g1 <- roc(testData2$Default ~ testData2$y_pred, plot = TRUE, print.auc = TRUE, ci=TRUE)
+
+g2 <- plotROC(actuals=testData2$Default,  predictedScores=testData2$Default_pred, returnSensitivityMat = FALSE)
+```
+
+##### The misclassification rate `r round((misClassError(actuals=testData2$Default, predictedScores=testData2$y_pred, threshold=0.5))*100,2)` percent and the precision is `r round((precision(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent. However, the ability of the model to correctly identify the defaulters (i.e. Sensitivity) is `r round((sensitivity(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent and the ability of the model to correctly identify the non defaulters (i.e. Specificity) is `r round((specificity(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent. The somersD value for the probit model is `r round((somersD(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent; larger the Somers D value, better is the model’s predictive ability. The kolmogorov-smirnov statistic for the model is `r round((ks_stat(actuals=testData2$Default, predictedScores=testData2$y_pred))*100,2)` percent which is widely used in credit scoring to determine the efficacy of binary classification models.
+
+##### The lift curve for the **Probit** model is as follows:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+ks_plot(actuals=testData2$Default, predictedScores=testData2$y_pred)
+```
+
+##### The optimal cutoff value for the model is  `r optimalCutoff(actuals=testData2$Default, predictedScores=testData2$y_pred, optimiseFor = "Both")`.
+```{r echo=FALSE}
+cutoff_table <- data.frame(optimalCutoff(actuals=testData2$Default, predictedScores=testData2$y_pred, optimiseFor = "Both", returnDiagnostics = TRUE)$sensitivityTable)
+kbl(cutoff_table) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T)
+
+r1 <- misClassError(actuals=testData2$Default, predictedScores=testData2$y_pred, threshold=0.5)
+r2 <- precision(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r3 <- sensitivity(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r4 <- specificity(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r5 <- somersD(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r6 <- ks_stat(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r7 <- youdensIndex(actuals=testData2$Default, predictedScores=testData2$y_pred)
+r8 <- Concordance(actuals=testData2$Default, predictedScores=testData2$y_pred)[1][[1]]
+r9 <- Concordance(actuals=testData2$Default, predictedScores=testData2$y_pred)[2][[1]]
+r10 <- npv(actuals=testData2$Default, predictedScores=testData2$y_pred)
+
+metric_list <- rbind(r1,r2,r3,r4,r5,r6,r7,r8,r9,r10)
+
+metric_list_df1 <- data.frame(metric_list)
+
+row.names(metric_list_df1) <- c("MisClassification-Error", "Precision", "Sensitivity", "Specificity", "SomersD", "KS-Stat", "Youdens-Index",
+                               "Concordance", "Discordance", "NPV")
+
+names(metric_list_df1) <- c("Probit-Model")
+metric_list_df1$Measures <- row.names(metric_list_df1)
+row.names(metric_list_df1) <- NULL
+metric_list_df1$`Probit-Model` <- round(metric_list_df1$`Probit-Model`,3)
+rm(r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,metric_list)
+
+measures_table <- merge(metric_list_df, metric_list_df1, by.x = "Measures", by.y = "Measures")
+rm(metric_list_df, metric_list_df1)
+
+rm(ydata_test, ydata_train)
+rm(preProcess_range_model, preProcess_missingdata_model)
+rm(dummies_model, trainData_mat, testData_mat)
+rm(testData2, y_pred, m)
+
+```
+
+#### Comparison and Conclusion:
+```{r echo=FALSE}
+kable(measures_table, longtable =T,booktabs =T,caption ="Diagnostic Measures") %>% add_header_above(c(" ","Logit vs Probit"=2))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T)
+
+```
+
+###### **There is no drastic difference between both the models and it would be unfair to say that Logit is performing significantly better than Probit model**. Looking at the measures it seems Logit is slightly ahead of Probit, however if we focus minutely on the lift curves of both models we notice the following. In the first 50% of the cases, the logit is able to give 87.78% of defaulters whereas probit is able to give 88.33% of defaulters; which is **0.63%** more.
+
+###### Declaration:-
+*The analyst has taken help from recorded video lectures and reading materials provided by Professor Vineet Virmani. The analyst has sought references from cran and R open documentations specific to package tutorials to get specific programming ideas. However, the analyst has not adopted any unfair means or used any readymade GitHub repositories without prior permission to replicate someone else’s work in this project. Any suspicion from the reviewer can be further clarified via discussions or emails*.
+
+[The data for bad loans is also available here](https://github.com/arimitramaiti/datasets/blob/master/articles/bad_loans_data.csv)
+
+Thank You
