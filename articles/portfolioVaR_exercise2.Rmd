@@ -1,0 +1,2236 @@
+---
+title: "ePGD-ABA (2020-21) | Finance Elective | Professor Vineet Virmani | Portfolio VaR Assignment"
+author: "Name:Arimitra Maiti, Email:aba20arimitram@iima.ac.in, Student ID : 6820017"
+date: "5/5/2021"
+output:
+  html_document:
+#    code_folding: hide
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+### Finding portfolio VaR using ARMA-GARCH
+The data used in this assignment has been obtained from [**nseindia**](https://www1.nseindia.com/products/content/equities/equities/eq_security.htm)
+This work deeply acknowledges the knowledge sharing from Professor **Vineet** **Virmani**, Ms. **Venus** **Rais** and Mr. **Sathish** **LM**.
+
+```{r echo=FALSE, include = FALSE}
+
+list.of.packages <- c("readr", "ggplot2", "ggpubr", "ggcorrplot", "caret", "RANN", "randomForest", "e1071", "doSNOW",
+                      "xgboost", "ipred", "pROC", "InformationValue", "tseries", "rmarkdown", "tinytex", "summarytools",
+                      "lmtest", "sandwich", "foreign", "PerformanceAnalytics", "lubridate", "xts", "rugarch", "kableExtra")
+
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages)) install.packages(new.packages)
+
+
+library('readr')
+library("ggplot2")
+library("ggpubr")
+library('ggcorrplot')
+library("InformationValue")
+library("rmarkdown")
+library("tinytex")
+library("summarytools")
+library("tseries")
+library("lmtest")
+library("sandwich")
+library("lubridate")
+library("PerformanceAnalytics")
+library("xts")
+library('gridExtra')
+library("rugarch")
+library("rmarkdown")
+library("tinytex")
+library("kableExtra")
+
+```
+
+### Please click on each tab to check company wise results {.tabset}
+
+#### WIPRO trends
+##### The daily closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+##Import Data
+data_daily <- read.csv("https://raw.githubusercontent.com/arimitramaiti/datasets/master/articles/portfolio_VaR_daily_data.csv", header = TRUE, sep = ",")
+
+# format the date column
+data_daily$Date <- mdy(data_daily$Date)
+
+data_xts_daily <- xts(data_daily[, c(2:4)], order.by = data_daily$Date)
+
+daily_returns_WIPRO <- Return.calculate(data_xts_daily$WIPRO,"log")
+
+daily_returns_TCS <- Return.calculate(data_xts_daily$TCS,"log")
+
+daily_returns_HCLTECH <- Return.calculate(data_xts_daily$HCLTECH,"log")
+
+##Import Data
+data_weekly <- read.csv("https://raw.githubusercontent.com/arimitramaiti/datasets/master/articles/portfolio_VaR_weekly_data.csv", header = TRUE, sep = ",")
+
+# format the date column
+data_weekly$Date <- mdy(data_weekly$Date)
+names(data_weekly) <- c("Date", "Series", "WIPRO", "TCS", "HCLTECH")
+data_weekly <- data_weekly[, c(1, 3:5)]
+
+data_xts_weekly <- xts(data_weekly[, c(2:4)], order.by = data_weekly$Date)
+
+weekly_returns_WIPRO <- Return.calculate(data_xts_weekly$WIPRO,"log")
+
+weekly_returns_TCS <- Return.calculate(data_xts_weekly$TCS,"log")
+
+weekly_returns_HCLTECH <- Return.calculate(data_xts_weekly$HCLTECH,"log")
+
+##Import Data
+data_monthly <- read.csv("https://raw.githubusercontent.com/arimitramaiti/datasets/master/articles/portfolio_VaR_monthly_data.csv", header = TRUE, sep = ",")
+
+# format the date column
+data_monthly$Date <- mdy(data_monthly$Date)
+names(data_monthly) <- c("Date", "Series", "WIPRO", "TCS", "HCLTECH")
+data_monthly <- data_monthly[, c(1, 3:5)]
+
+data_xts_monthly <- xts(data_monthly[, c(2:4)], order.by = data_monthly$Date)
+
+monthly_returns_WIPRO <- Return.calculate(data_xts_monthly$WIPRO,"log")
+
+monthly_returns_TCS <- Return.calculate(data_xts_monthly$TCS,"log")
+
+monthly_returns_HCLTECH <- Return.calculate(data_xts_monthly$HCLTECH,"log")
+
+# Set axis limits c(min, max)
+min <- as.Date("2016-04-01")
+max <- as.Date("2021-03-31")
+
+p1 <- ggplot(data = data_xts_daily, aes(x = Index, y = WIPRO)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "WIPRO daily closing price", y = "Closing Price", x="Date") + scale_x_date(limits = c(min, max)) + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"))
+
+
+p2 <- ggplot(data = daily_returns_WIPRO, aes(x = Index, y = WIPRO)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "WIPRO daily closing price Returns", y = "Returns", x="Date") + scale_x_date(limits = c(min, max)) + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"))
+
+grid.arrange(p1, p2, nrow = 2)
+
+```
+
+##### The weekly closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+p11 <- ggplot(data = data_xts_weekly, aes(x = Index, y = WIPRO)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%W-%y", date_breaks = "6 weeks") +
+  labs(title = "WIPRO weekly closing price", y = "Closing Price", x="Week number-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+p22 <- ggplot(data = weekly_returns_WIPRO, aes(x = Index, y = WIPRO)) + geom_line(color = "#00AFBB", size = 1) +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%W-%y", date_breaks = "6 weeks") +
+  labs(title = "WIPRO weekly closing price Returns", y = "Returns", x="Week number-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+grid.arrange(p11, p22, nrow = 2)
+```
+
+##### The monthly closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+p111 <- ggplot(data = data_xts_monthly, aes(x = Index, y = WIPRO)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "3 months") +
+  labs(title = "WIPRO monthly closing price", y = "Closing Price", x="Month-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+p222 <- ggplot(data = monthly_returns_WIPRO, aes(x = Index, y = WIPRO)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "3 months") +
+  labs(title = "WIPRO monthly closing price Returns", y = "Returns", x="Month-Year") +
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+grid.arrange(p111, p222, nrow = 2)
+```
+
+#### WIPRO daily returns model
+##### The **Box-Jenkins** process for daily returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(daily_returns_WIPRO$WIPRO, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(daily_returns_WIPRO$WIPRO)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO daily returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO daily returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO daily returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for Wipro **daily** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = daily_returns_WIPRO[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration data set
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO daily returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for Wipro **daily** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(daily_returns_WIPRO$WIPRO, order = c(0,0,0))
+
+mean_intercept <- arma_model$coef[[1]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(3, 4)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = daily_returns_WIPRO[-1,1])
+
+omega_val <- var_model@fit$coef[[9]]
+alpha_val <- var_model@fit$coef[[10]]
+beta_val <- var_model@fit$coef[[11]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+WIPRO_data <- daily_returns_WIPRO[-1, ]
+WIPRO_data$Obs <- c(1:length(WIPRO_data))
+WIPRO_data$Weights <- alpha_val*(beta_val^(WIPRO_data$Obs-1))
+WIPRO_data$Weights_lag <- lag(WIPRO_data$Weights, k=1)
+WIPRO_data$var <- WIPRO_data$Weights_lag*(WIPRO_data$WIPRO^2)
+
+conditional_var <- omega_val + ((unlist(WIPRO_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(WIPRO_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+
+conditional_sd <- sqrt(conditional_var)
+
+rm(WIPRO_data, conditional_var)
+
+alpha = 0.05
+VaR_1day_WIPRO <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1day_WIPRO <- conditional_mean
+conditional_sd_1day_WIPRO <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **Wipro** **daily** VaR summary:
++ Wipro daily VaR is **`r round(VaR_1day_WIPRO, 4)`** at **alpha=5%**
++ Wipro daily conditional mean is **`r round(conditional_mean_1day_WIPRO, 4)`**
++ Wipro daily conditional sd is **`r round(conditional_sd_1day_WIPRO, 4)`**
+
+#### WIPRO weekly returns model
+##### The **Box-Jenkins** process for weekly returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(weekly_returns_WIPRO$WIPRO, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(weekly_returns_WIPRO$WIPRO)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO weekly returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO weekly returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO weekly returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for Wipro **weekly** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = weekly_returns_WIPRO[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals data set as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO weekly returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for Wipro **weekly** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(weekly_returns_WIPRO$WIPRO, order = c(0,0,0))
+
+mean_intercept <- arma_model$coef[[1]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(2, 2)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = weekly_returns_WIPRO[-1,1])
+
+omega_val <- var_model@fit$coef[[6]]
+alpha_val <- var_model@fit$coef[[7]]
+beta_val <- var_model@fit$coef[[8]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+WIPRO_data <- weekly_returns_WIPRO[-1, ]
+WIPRO_data$Obs <- c(1:length(WIPRO_data))
+WIPRO_data$Weights <- alpha_val*(beta_val^(WIPRO_data$Obs-1))
+WIPRO_data$Weights_lag <- lag(WIPRO_data$Weights, k=1)
+WIPRO_data$var <- WIPRO_data$Weights_lag*(WIPRO_data$WIPRO^2)
+
+conditional_var <- omega_val + ((unlist(WIPRO_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(WIPRO_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+
+conditional_sd <- sqrt(conditional_var)
+
+rm(WIPRO_data, conditional_var)
+
+alpha = 0.05
+VaR_1week_WIPRO <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1week_WIPRO <- conditional_mean
+conditional_sd_1week_WIPRO <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **Wipro** **weekly** VaR summary:
++ Wipro weekly VaR is **`r round(VaR_1week_WIPRO, 4)`** at **alpha=5%**
++ Wipro weekly conditional mean is **`r round(conditional_mean_1week_WIPRO, 4)`**
++ Wipro weekly conditional sd is **`r round(conditional_sd_1week_WIPRO, 4)`**
+
+#### WIPRO monthly returns model
+##### The **Box-Jenkins** process for monthly returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(monthly_returns_WIPRO$WIPRO, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(monthly_returns_WIPRO$WIPRO)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO monthly returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO monthly returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO monthly returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for Wipro **monthly** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    tryCatch({
+      #AR parameter
+      p = i-1
+      #MA parameter
+      q = j-1
+      #Fit GARCH(1,1) varying armaOrder p and q parameters
+      spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+      model <- ugarchfit(spec_object, data = monthly_returns_WIPRO[-1,1])
+      #Extract AIC measure
+      model_aic = infocriteria(model)[1]
+      #Store all columns in a single row
+      mylist <- cbind(p, q, model_aic)
+      my_df <- data.frame(mylist)
+      #Store jth iteration first
+      store.j[[j]] <- my_df
+      want.j <- do.call(rbind, store.j)
+      },
+    error=function(e){return(NA)}
+    )
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "WIPRO monthly returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for Wipro **monthly** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(monthly_returns_WIPRO$WIPRO, order = c(0,0,0))
+
+mean_intercept <- arma_model$coef[[1]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(4, 4)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = monthly_returns_WIPRO[-1,1])
+
+omega_val <- var_model@fit$coef[[10]]
+alpha_val <- var_model@fit$coef[[11]]
+beta_val <- var_model@fit$coef[[12]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+WIPRO_data <- monthly_returns_WIPRO[-1, ]
+WIPRO_data$Obs <- c(1:length(WIPRO_data))
+WIPRO_data$Weights <- alpha_val*(beta_val^(WIPRO_data$Obs-1))
+WIPRO_data$Weights_lag <- lag(WIPRO_data$Weights, k=1)
+WIPRO_data$var <- WIPRO_data$Weights_lag*(WIPRO_data$WIPRO^2)
+
+conditional_var <- omega_val + ((unlist(WIPRO_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(WIPRO_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+
+conditional_sd <- sqrt(conditional_var)
+
+rm(WIPRO_data, conditional_var)
+
+alpha = 0.05
+VaR_1month_WIPRO <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1month_WIPRO <- conditional_mean
+conditional_sd_1month_WIPRO <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **Wipro** **monthly** VaR summary:
++ Wipro monthly VaR is **`r round(VaR_1month_WIPRO, 4)`** at **alpha=5%**
++ Wipro monthly conditional mean is **`r round(conditional_mean_1month_WIPRO, 4)`**
++ Wipro monthly conditional sd is **`r round(conditional_sd_1month_WIPRO, 4)`**
+
+#### TCS trends
+##### The daily closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+p3 <- ggplot(data = data_xts_daily, aes(x = Index, y = TCS)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "TCS daily closing price", y = "Closing Price", x="Date") + scale_x_date(limits = c(min, max)) + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"))
+
+p4 <- ggplot(data = daily_returns_TCS, aes(x = Index, y = TCS)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "TCS daily closing price Returns", y = "Returns", x="Date") + scale_x_date(limits = c(min, max)) + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"))
+
+grid.arrange(p3, p4, nrow = 2)
+```
+
+##### The weekly closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+p33 <- ggplot(data = data_xts_weekly, aes(x = Index, y = TCS)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%W-%y", date_breaks = "6 weeks") +
+  labs(title = "TCS weekly closing price", y = "Closing Price", x="Week number-Year") +
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+p44 <- ggplot(data = weekly_returns_TCS, aes(x = Index, y = TCS)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%W-%y", date_breaks = "6 weeks") +
+  labs(title = "TCS weekly closing price Returns", y = "Returns", x="Week number-Year") +
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+grid.arrange(p33, p44, nrow = 2)
+```
+
+##### The monthly closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+p333 <- ggplot(data = data_xts_monthly, aes(x = Index, y = TCS)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "3 months") +
+  labs(title = "TCS monthly closing price", y = "Closing Price", x="Month-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+p444 <- ggplot(data = monthly_returns_TCS, aes(x = Index, y = TCS)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "3 months") +
+  labs(title = "TCS monthly closing price Returns", y = "Returns", x="Month-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+grid.arrange(p333, p444, nrow = 2)
+```
+
+#### TCS daily returns model
+##### The **Box-Jenkins** process for daily returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(daily_returns_TCS$TCS, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(daily_returns_TCS$TCS)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS daily returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS daily returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS daily returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for TCS **daily** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = daily_returns_TCS[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS daily returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for TCS **daily** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(daily_returns_TCS$TCS, order = c(0,0,0))
+
+mean_intercept <- arma_model$coef[[1]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(4, 3)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = daily_returns_TCS[-1,1])
+
+omega_val <- var_model@fit$coef[[9]]
+alpha_val <- var_model@fit$coef[[10]]
+beta_val <- var_model@fit$coef[[11]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+TCS_data <- daily_returns_TCS[-1, ]
+TCS_data$Obs <- c(1:length(TCS_data))
+TCS_data$Weights <- alpha_val*(beta_val^(TCS_data$Obs-1))
+TCS_data$Weights_lag <- lag(TCS_data$Weights, k=1)
+TCS_data$var <- TCS_data$Weights_lag*(TCS_data$TCS^2)
+
+conditional_var <- omega_val + ((unlist(TCS_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(TCS_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+conditional_sd <- sqrt(conditional_var)
+
+rm(TCS_data, conditional_var)
+
+alpha = 0.05
+VaR_1day_TCS <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1day_TCS <- conditional_mean
+conditional_sd_1day_TCS <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **TCS** **daily** VaR summary:
++ TCS daily VaR is **`r round(VaR_1day_TCS, 4)`** at **alpha=5%**
++ TCS daily conditional mean is **`r round(conditional_mean_1day_TCS, 4)`**
++ TCS daily conditional sd is **`r round(conditional_sd_1day_TCS, 4)`**
+
+#### TCS weekly returns model
+##### The **Box-Jenkins** process for weekly returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(weekly_returns_TCS$TCS, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(weekly_returns_TCS$TCS)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS weekly returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS weekly returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS weekly returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for TCS **weekly** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = weekly_returns_TCS[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS weekly returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for TCS **weekly** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(weekly_returns_TCS$TCS, order = c(1,0,1))
+
+mean_intercept <- arma_model$coef[[3]]
+mean_phi <- arma_model$coef[[1]]
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(4, 4)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = weekly_returns_TCS[-1,1])
+
+omega_val <- var_model@fit$coef[[10]]
+alpha_val <- var_model@fit$coef[[11]]
+beta_val <- var_model@fit$coef[[12]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+TCS_data <- weekly_returns_TCS[-1, ]
+TCS_data$Obs <- c(1:length(TCS_data))
+TCS_data$Weights <- alpha_val*(beta_val^(TCS_data$Obs-1))
+TCS_data$Weights_lag <- lag(TCS_data$Weights, k=1)
+TCS_data$var <- TCS_data$Weights_lag*(TCS_data$TCS^2)
+
+conditional_var <- omega_val + ((unlist(TCS_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(TCS_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+conditional_sd <- sqrt(conditional_var)
+
+rm(TCS_data, conditional_var)
+
+alpha = 0.05
+VaR_1week_TCS <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1week_TCS <- conditional_mean
+conditional_sd_1week_TCS <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **TCS** **weekly** VaR summary:
++ TCS weekly VaR is **`r round(VaR_1week_TCS, 4)`** at **alpha=5%**
++ TCS weekly conditional mean is **`r round(conditional_mean_1week_TCS, 4)`**
++ TCS weekly conditional sd is **`r round(conditional_sd_1week_TCS, 4)`**
+
+#### TCS monthly returns model
+##### The **Box-Jenkins** process for monthly returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(monthly_returns_TCS$TCS, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(monthly_returns_TCS$TCS)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS monthly returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS monthly returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS monthly returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for TCS **monthly** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = monthly_returns_TCS[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "TCS monthly returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for TCS **monthly** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(monthly_returns_TCS$TCS, order = c(0,0,1))
+
+mean_intercept <- arma_model$coef[[2]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(3, 4)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = monthly_returns_TCS[-1,1])
+
+omega_val <- var_model@fit$coef[[9]]
+alpha_val <- var_model@fit$coef[[10]]
+beta_val <- var_model@fit$coef[[11]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+TCS_data <- monthly_returns_TCS[-1, ]
+TCS_data$Obs <- c(1:length(TCS_data))
+TCS_data$Weights <- alpha_val*(beta_val^(TCS_data$Obs-1))
+TCS_data$Weights_lag <- lag(TCS_data$Weights, k=1)
+TCS_data$var <- TCS_data$Weights_lag*(TCS_data$TCS^2)
+
+conditional_var <- omega_val + ((unlist(TCS_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(TCS_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+conditional_sd <- sqrt(conditional_var)
+
+rm(TCS_data, conditional_var)
+
+alpha = 0.05
+VaR_1month_TCS <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1month_TCS <- conditional_mean
+conditional_sd_1month_TCS <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **TCS** **monthly** VaR summary:
++ TCS monthly VaR is **`r round(VaR_1month_TCS, 4)`** at **alpha=5%**
++ TCS monthly conditional mean is **`r round(conditional_mean_1month_TCS, 4)`**
++ TCS monthly conditional sd is **`r round(conditional_sd_1month_TCS, 4)`**
+
+#### HCLTECH trends
+##### The daily closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#rm(list_colnames, model_iterations)
+
+p5 <- ggplot(data = data_xts_daily, aes(x = Index, y = HCLTECH)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "HCLTECH daily closing price", y = "Closing Price", x="Date") + scale_x_date(limits = c(min, max)) + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"))
+
+
+p6 <- ggplot(data = daily_returns_HCLTECH, aes(x = Index, y = HCLTECH)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = "HCLTECH daily closing price Returns", y = "Returns", x="Date") + scale_x_date(limits = c(min, max)) + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"))
+
+grid.arrange(p5, p6, nrow = 2)
+```
+
+##### The weekly closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+p55 <- ggplot(data = data_xts_weekly, aes(x = Index, y = HCLTECH)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%W-%y", date_breaks = "6 weeks") + 
+  labs(title = "HCLTECH weekly closing price", y = "Closing Price", x="Week number-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+p66 <- ggplot(data = weekly_returns_HCLTECH, aes(x = Index, y = HCLTECH)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%W-%y", date_breaks = "6 weeks") +
+  labs(title = "HCLTECH weekly closing price Returns", y = "Returns", x="Week number-Year") +
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+grid.arrange(p55, p66, nrow = 2)
+```
+
+##### The monthly closing prices and returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+p555 <- ggplot(data = data_xts_monthly, aes(x = Index, y = HCLTECH)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "3 months") +
+  labs(title = "HCLTECH monthly closing price", y = "Closing Price", x="Month-Year") +
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+p666 <- ggplot(data = monthly_returns_HCLTECH, aes(x = Index, y = HCLTECH)) + geom_line(color = "#00AFBB", size = 1) + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "3 months") +
+  labs(title = "HCLTECH monthly closing price Returns", y = "Returns", x="Month-Year") + 
+  theme(plot.title = element_text(size = 10, face="bold"),plot.caption = element_text(face = "italic", size = 10), axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 10, face="bold"), axis.text.x=element_text(size = 10, angle=60, hjust=1))
+
+grid.arrange(p555, p666, nrow = 2)
+
+rm(p1,p2,p11,p22,p111,p222,p3,p4,p33,p44,p333,p444,p5,p6,p55,p66,p555,p666)
+
+```
+
+#### HCLTECH daily returns model
+##### The **Box-Jenkins** process for daily returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(daily_returns_HCLTECH$HCLTECH, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(daily_returns_HCLTECH$HCLTECH)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH daily returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH daily returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH daily returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for HCLTECH **daily** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = daily_returns_HCLTECH[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH daily returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for HCLTECH **daily** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(daily_returns_HCLTECH$HCLTECH, order = c(0,0,0))
+
+mean_intercept <- arma_model$coef[[1]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(2, 4)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = daily_returns_HCLTECH[-1,1])
+
+omega_val <- var_model@fit$coef[[8]]
+alpha_val <- var_model@fit$coef[[9]]
+beta_val <- var_model@fit$coef[[10]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+HCLTECH_data <- daily_returns_HCLTECH[-1, ]
+HCLTECH_data$Obs <- c(1:length(HCLTECH_data))
+HCLTECH_data$Weights <- alpha_val*(beta_val^(HCLTECH_data$Obs-1))
+HCLTECH_data$Weights_lag <- lag(HCLTECH_data$Weights, k=1)
+HCLTECH_data$var <- HCLTECH_data$Weights_lag*(HCLTECH_data$HCLTECH^2)
+
+conditional_var <- omega_val + ((unlist(HCLTECH_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(HCLTECH_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+conditional_sd <- sqrt(conditional_var)
+
+rm(HCLTECH_data, conditional_var)
+
+alpha = 0.05
+VaR_1day_HCLTECH <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1day_HCLTECH <- conditional_mean
+conditional_sd_1day_HCLTECH <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **HCLTECH** **daily** VaR summary:
++ HCLTECH daily VaR is **`r round(VaR_1day_HCLTECH, 4)`** at **alpha=5%**
++ HCLTECH daily conditional mean is **`r round(conditional_mean_1day_HCLTECH, 4)`**
++ HCLTECH daily conditional sd is **`r round(conditional_sd_1day_HCLTECH, 4)`**
+
+#### HCLTECH weekly returns model
+##### The **Box-Jenkins** process for weekly returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(weekly_returns_HCLTECH$HCLTECH, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(weekly_returns_HCLTECH$HCLTECH)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH weekly returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH weekly returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH weekly returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for HCLTECH **weekly** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    tryCatch({
+      #AR parameter
+      p = i-1
+      #MA parameter
+      q = j-1
+      #Fit GARCH(1,1) varying armaOrder p and q parameters
+      spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+      model <- ugarchfit(spec_object, data = weekly_returns_HCLTECH[-1,1])
+      #Extract AIC measure
+      model_aic = infocriteria(model)[1]
+      #Store all columns in a single row
+      mylist <- cbind(p, q, model_aic)
+      my_df <- data.frame(mylist)
+      #Store jth iteration first
+      store.j[[j]] <- my_df
+      want.j <- do.call(rbind, store.j)
+    },
+    error=function(e){return(NA)}
+    )
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals data set as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH weekly returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for HCLTECH **weekly** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(weekly_returns_HCLTECH$HCLTECH, order = c(0,0,0))
+
+mean_intercept <- arma_model$coef[[1]]
+mean_phi <- 0
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(0, 0)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = weekly_returns_HCLTECH[-1,1])
+
+omega_val <- var_model@fit$coef[[2]]
+alpha_val <- var_model@fit$coef[[3]]
+beta_val <- var_model@fit$coef[[4]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+HCLTECH_data <- weekly_returns_HCLTECH[-1, ]
+HCLTECH_data$Obs <- c(1:length(HCLTECH_data))
+HCLTECH_data$Weights <- alpha_val*(beta_val^(HCLTECH_data$Obs-1))
+HCLTECH_data$Weights_lag <- lag(HCLTECH_data$Weights, k=1)
+HCLTECH_data$var <- HCLTECH_data$Weights_lag*(HCLTECH_data$HCLTECH^2)
+
+conditional_var <- omega_val + ((unlist(HCLTECH_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(HCLTECH_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+conditional_sd <- sqrt(conditional_var)
+
+rm(HCLTECH_data, conditional_var)
+
+alpha = 0.05
+VaR_1week_HCLTECH <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1week_HCLTECH <- conditional_mean
+conditional_sd_1week_HCLTECH <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **HCLTECH** **weekly** VaR summary:
++ HCLTECH weekly VaR is **`r round(VaR_1week_HCLTECH, 4)`** at **alpha=5%**
++ HCLTECH weekly conditional mean is **`r round(conditional_mean_1week_HCLTECH, 4)`**
++ HCLTECH weekly conditional sd is **`r round(conditional_sd_1week_HCLTECH, 4)`**
+
+#### HCLTECH monthly returns model
+##### The **Box-Jenkins** process for monthly returns look like this:
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA parameter
+    q = j-1
+    #Fixed for this case due to growth rate calculation
+    d = 0
+    #Fit ARMA model
+    model = arima(monthly_returns_HCLTECH$HCLTECH, order = c(p,d,q))
+    #Evaluate BIC measure
+    bic=AIC(model, k = log(length(monthly_returns_HCLTECH$HCLTECH)))
+    #Extract model coefficients
+    model_coef <- coeftest(model)
+    #Extract AIC measure
+    model_aic = model$aic
+    model_bic = bic
+    #Extract sd for the innovations or random shocks
+    residual_volatility = sqrt(model$sigma2)
+    #Evaluate total terms without the random shock unlike Stata, but includes the constant term
+    total_terms = p + q + 1
+    #How many significant terms exist in the model?
+    signif_terms = sum(model_coef[,4]<0.10)
+    #Proportion of significant terms
+    ratio_terms = (signif_terms/total_terms)*100
+    #Model residuals
+    model_residuals <- t(data.frame(residuals(model)))
+    #Store all columns in a single row
+    mylist <- cbind(p, d, q, model_aic, model_bic, residual_volatility, total_terms, signif_terms, ratio_terms, model_residuals)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a data frame
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:9)]
+row.names(model_iterations) <- NULL
+
+#Extract model residuals and re-transpose them
+model_residuals <- want.i[, c(10:ncol(want.i))]
+row.names(model_residuals) <- NULL
+
+model_residuals <- t(model_residuals)
+model_residuals <- data.frame(model_residuals)
+row.names(model_residuals) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist)
+rm(bic, d, i, j, p, q, model_aic, model_bic, model_coef, ratio_terms, residual_volatility, signif_terms, total_terms)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,3)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+names(model_residuals) <- as.vector(unlist(list_colnames))
+
+rm(a)
+
+#Process to plot AIC & BIC measure from R
+##Plot MODEL AIC
+labs <- as.vector(unlist(list_colnames))
+g1 <- ggplot(data=model_iterations, aes(x=labs, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH monthly returns - ARMA AIC", y = "AIC", x="")
+
+##Plot MODEL BIC
+labs <- as.vector(unlist(list_colnames))
+g2 <- ggplot(data=model_iterations, aes(x=labs, y=model_bic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH monthly returns - ARMA BIC", y = "BIC", x="")
+
+##Plot Residual Volatility
+labs <- as.vector(unlist(list_colnames))
+g3 <- ggplot(data=model_iterations, aes(x=labs, y=residual_volatility, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$residual_volatility), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH monthly returns - ARMA Sigma estimates", y = "Sigma Estimates", x="")
+
+grid.arrange(g1, nrow = 1)
+grid.arrange(g2, nrow = 1)
+grid.arrange(g3, nrow = 1)
+```
+
+##### The best ARMA model for HCLTECH **monthly** returns is **`r paste("ARMA(",paste(model_iterations[which.min(model_iterations$model_aic), "p"],model_iterations[which.min(model_iterations$model_aic), "q"], sep=","),")",sep="")`**.
+
+```{r echo=FALSE, fig.asp = 0.8, fig.width = 7, out.width = "100%", dpi = 100}
+
+rm(list_colnames, model_iterations, model_residuals, labs, g1, g2, g3)
+#Create empty list 
+store.j <- list()
+store.i <- list()
+for (i in 1:5) {
+  for (j in 1:5) {
+    #AR parameter
+    p = i-1
+    #MA paramter
+    q = j-1
+    #Fit GARCH(1,1) varying armaOrder p and q parameters
+    spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(p, q)), distribution.model = "std")
+    model <- ugarchfit(spec_object, data = monthly_returns_HCLTECH[-1,1])
+    #Extract AIC measure
+    model_aic = infocriteria(model)[1]
+    #Store all columns in a single row
+    mylist <- cbind(p, q, model_aic)
+    my_df <- data.frame(mylist)
+    #Store jth iteration first
+    store.j[[j]] <- my_df
+    want.j <- do.call(rbind, store.j)
+  }
+  #Store ith iteration
+  store.i[[i]] <- want.j
+}
+
+#call rbind function to append the list into a dataframe
+want.i <- do.call(rbind, store.i)
+want.i <- data.frame(want.i)
+
+#Extract columns related to model iterations for Box Jenkins
+model_iterations <- want.i[, c(1:3)]
+row.names(model_iterations) <- NULL
+
+rm(want.i, want.j, store.i, store.j, my_df, model, mylist, p, q, i, j, model_aic, spec_object)
+
+##Rename column names of residuals dataset as per sequence stored in iteration dataset
+a <- model_iterations[, c(1,2)]
+a$string <- paste("ARMA(", a$p, ",", a$q, ")", sep = "")
+list_colnames <- list(a$string)
+model_iterations$Order <- as.vector(unlist(list_colnames))
+
+rm(a)
+g1 <- ggplot(data=model_iterations, aes(x=Order, y=model_aic, group=1)) +
+  geom_line()+ geom_point() +
+  theme(plot.title = element_text(size = 10),plot.caption = element_text(face = "italic", size = 10),
+        axis.text.x = element_text(angle = 35, vjust = 0.7, hjust=1, size = 10, face="bold"), axis.title.y = element_text(size = 10, face="bold")) +
+  geom_vline(xintercept = which.min(model_iterations$model_aic), linetype="dotted", 
+             color = "red", size=1.5) + labs(title = "HCLTECH monthly returns - GARCH(1,1) ARMAOrder AIC", y = "AIC", x="")
+
+grid.arrange(g1, nrow = 1)
+
+```
+
+##### The best GARCH model for HCLTECH **monthly** returns is **`r paste("SGARCH(1,1)", model_iterations[which.min(model_iterations$model_aic), "Order"], sep=",")`**.
+
+```{r echo=FALSE, include = FALSE}
+
+rm(list_colnames, model_iterations, g1)
+
+arma_model <- arima(monthly_returns_HCLTECH$HCLTECH, order = c(2,0,4))
+
+mean_intercept <- arma_model$coef[[7]]
+mean_phi <- arma_model$coef[[1]] + arma_model$coef[[2]]
+conditional_mean <- mean_intercept/(1+mean_phi)
+
+spec_object <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder = c(3, 2)), distribution.model = "std")
+var_model <- ugarchfit(spec_object, data = monthly_returns_HCLTECH[-1,1])
+
+omega_val <- var_model@fit$coef[[7]]
+alpha_val <- var_model@fit$coef[[8]]
+beta_val <- var_model@fit$coef[[9]]
+
+rm(arma_model, var_model, spec_object, mean_intercept, mean_phi)
+
+HCLTECH_data <- monthly_returns_HCLTECH[-1, ]
+HCLTECH_data$Obs <- c(1:length(HCLTECH_data))
+HCLTECH_data$Weights <- alpha_val*(beta_val^(HCLTECH_data$Obs-1))
+HCLTECH_data$Weights_lag <- lag(HCLTECH_data$Weights, k=1)
+HCLTECH_data$var <- HCLTECH_data$Weights_lag*(HCLTECH_data$HCLTECH^2)
+
+conditional_var <- omega_val + ((unlist(HCLTECH_data[1, 1], recursive = TRUE, use.names = TRUE)[[1]]^2)*alpha_val) + (sum(HCLTECH_data$var, na.rm = TRUE)+omega_val/(1-beta_val))*beta_val
+conditional_sd <- sqrt(conditional_var)
+
+rm(HCLTECH_data, conditional_var)
+
+alpha = 0.05
+VaR_1month_HCLTECH <- qnorm(alpha, mean = conditional_mean, sd = conditional_sd)
+
+conditional_mean_1month_HCLTECH <- conditional_mean
+conditional_sd_1month_HCLTECH <- conditional_sd
+
+rm(alpha, alpha_val, beta_val, omega_val, conditional_mean, conditional_sd)
+
+```
+
+##### **HCLTECH** **monthly** VaR summary:
++ HCLTECH monthly VaR is **`r round(VaR_1month_HCLTECH, 4)`** at **alpha=5%**
++ HCLTECH monthly conditional mean is **`r round(conditional_mean_1month_HCLTECH, 4)`**
++ HCLTECH monthly conditional sd is **`r round(conditional_sd_1month_HCLTECH, 4)`**
+
+#### Comparisons & Conclusion
+##### The company wise VaR, conditional mean and sd looks like this:
+```{r echo=FALSE}
+
+WIPRO <- data.frame(rbind(cbind(VaR_1day_WIPRO, conditional_mean_1day_WIPRO, conditional_sd_1day_WIPRO),
+                          cbind(VaR_1week_WIPRO, conditional_mean_1week_WIPRO, conditional_sd_1week_WIPRO),
+                          cbind(VaR_1month_WIPRO, conditional_mean_1month_WIPRO, conditional_sd_1month_WIPRO)))
+
+row.names(WIPRO) <- c("1day", "1week", "1month")
+names(WIPRO) <- c("VaR", "Conditional_Mean", "Conditional_Sd")
+
+TCS <- data.frame(rbind(cbind(VaR_1day_TCS, conditional_mean_1day_TCS, conditional_sd_1day_TCS),
+                        cbind(VaR_1week_TCS, conditional_mean_1week_TCS, conditional_sd_1week_TCS),
+                        cbind(VaR_1month_TCS, conditional_mean_1month_TCS, conditional_sd_1month_TCS)))
+
+row.names(TCS) <- c("1day", "1week", "1month")
+names(TCS) <- c("VaR", "Conditional_Mean", "Conditional_Sd")
+
+HCLTECH <- data.frame(rbind(cbind(VaR_1day_HCLTECH, conditional_mean_1day_HCLTECH, conditional_sd_1day_HCLTECH),
+                            cbind(VaR_1week_HCLTECH, conditional_mean_1week_HCLTECH, conditional_sd_1week_HCLTECH),
+                            cbind(VaR_1month_HCLTECH, conditional_mean_1month_HCLTECH, conditional_sd_1month_HCLTECH)))
+
+row.names(HCLTECH) <- c("1day", "1week", "1month")
+names(HCLTECH) <- c("VaR", "Conditional_Mean", "Conditional_Sd")
+
+WIPRO$VaR_pct <- round(WIPRO$VaR*100, 2)
+
+TCS$VaR_pct <- round(TCS$VaR*100, 2)
+
+HCLTECH$VaR_pct <- round(HCLTECH$VaR*100, 2)
+
+kable(WIPRO, longtable =T,booktabs =T,caption ="Wipro Diagnostic Measures") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T) %>%
+  footnote(number = c("VaR_pct = VaR*100",
+                      "Conditional Mean is derived from best ARMA model",
+                      "Conditional sd is derived from SGARCH-ARMA model"))
+
+kable(TCS, longtable =T,booktabs =T,caption ="TCS Diagnostic Measures") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T) %>%
+  footnote(number = c("VaR_pct = VaR*100",
+                      "Conditional Mean is derived from best ARMA model",
+                      "Conditional sd is derived from SGARCH-ARMA model"))
+
+kable(HCLTECH, longtable =T,booktabs =T,caption ="HCLTECH Diagnostic Measures") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T) %>%
+  footnote(number = c("VaR_pct = VaR*100",
+                      "Conditional Mean is derived from best ARMA model",
+                      "Conditional sd is derived from SGARCH-ARMA model"))
+
+
+```
+
+##### The company wise ratios looks like this:
+```{r echo=FALSE}
+
+ratios <- data.frame(rbind(cbind(round(WIPRO[2, 1]/WIPRO[1, 1],0), round(TCS[2, 1]/TCS[1, 1],0), round(HCLTECH[2, 1]/HCLTECH[1, 1],0)),
+           cbind(round(WIPRO[3, 1]/WIPRO[2, 1],0), round(TCS[3, 1]/TCS[2, 1],0), round(HCLTECH[3, 1]/HCLTECH[2, 1],0)),
+           cbind(round(WIPRO[3, 1]/WIPRO[1, 1],0), round(TCS[3, 1]/TCS[1, 1],0), round(HCLTECH[3, 1]/HCLTECH[1, 1],0))))
+
+row.names(ratios) <- c("Week-Day", "Month-Week", "Month-Day")
+
+names(ratios) <- c("WIPRO", "TCS", "HCLTECH")
+
+kable(ratios, longtable =T,booktabs =T,caption ="Comparison of Ratios") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), font_size = 12, fixed_thead = T) %>%
+  footnote(number = c("Week-Day = VaR 1 week divided by VaR 1 day",
+                      "Month-Week = VaR 1 month divided by VaR 1 week",
+                      "Month-Day = VaR 1 month divided by VaR 1 day"))
+
+rm(list = ls())
+
+```
+
+###### Declaration:-
+*The analyst has taken help from recorded video lectures and reading materials provided by Professor Vineet Virmani. The analyst has sought references from cran and R open documentations specific to package tutorials to get specific programming ideas. However, the analyst has not adopted any unfair means or used any readymade GitHub repositories without prior permission to replicate someone else’s work in this project. Any suspicion from the reviewer can be further clarified via discussions or emails*.
+
+Thank You
